@@ -12,8 +12,8 @@ from openai import AsyncOpenAI
 import traceback
 from markdown import markdown
 
-from SpecMerge.pdf_utils import get_page_lines
-from SpecMerge.pdf_editing import EditsList, PageEdit, StrikeThroughEdit, get_section_edits
+from pdf_utils import get_page_lines
+from pdf_editing import EditsList, PageEdit, StrikeThroughEdit, get_section_edits
 from pdf_utils import multiple_split_insert
 
 if 'config' not in st.session_state:
