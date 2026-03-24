@@ -176,6 +176,7 @@ else:
     selected_specs_file_name = st.pills(
         label = 'Select a specs file to edit',
         options = specs_file_options,
+        default = 'FP-14' if 'FP-14' in specs_file_options else None,
         selection_mode = 'single'
     )
 
