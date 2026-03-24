@@ -20,10 +20,6 @@ if 'config' not in st.session_state:
     with open('config.toml', 'rb') as f:
         st.session_state['config'] = tomli.load(f)
 
-if 'global_config' not in st.session_state:
-    with open('../GlobalUtils/config.toml', 'rb') as f:
-        st.session_state['global_config'] = tomli.load(f)
-
 def load_css():
     css_path = st.session_state['config'].get('css_path', 'assets/style.css')
     with open(css_path, 'r') as f:

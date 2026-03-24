@@ -1,0 +1,6 @@
+streamlit
+PyMuPDF
+openai
+pydantic
+tomli
+markdown
