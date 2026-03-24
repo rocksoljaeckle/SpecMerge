@@ -1,0 +1,114 @@
+/* === SpecMerge Theme === */
+
+/* Hide default Streamlit branding */
+#MainMenu, footer, header {
+    visibility: hidden;
+}
+
+/* Main container spacing */
+.block-container {
+    padding-top: 2rem;
+    padding-bottom: 2rem;
+    max-width: 52rem;
+}
+
+/* App title */
+h1 {
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    padding-bottom: 0.25rem;
+    border-bottom: 3px solid #4F8BF9;
+    margin-bottom: 0.5rem;
+}
+
+/* Subtitle / description text */
+.app-description {
+    font-size: 1.05rem;
+    color: #6b7280;
+    margin-bottom: 1.5rem;
+}
+
+/* Upload area */
+[data-testid="stFileUploader"] {
+    border: 2px dashed #cbd5e1;
+    border-radius: 12px;
+    padding: 1rem;
+    background: #f8fafc;
+    transition: border-color 0.2s;
+}
+
+[data-testid="stFileUploader"]:hover {
+    border-color: #4F8BF9;
+}
+
+/* Primary buttons */
+.stButton > button[kind="primary"],
+.stDownloadButton > button[kind="primary"] {
+    background: linear-gradient(135deg, #4F8BF9 0%, #3b6de0 100%);
+    border: none;
+    border-radius: 8px;
+    padding: 0.6rem 2rem;
+    font-weight: 600;
+    font-size: 0.95rem;
+    letter-spacing: 0.01em;
+    transition: transform 0.15s, box-shadow 0.15s;
+}
+
+.stButton > button[kind="primary"]:hover,
+.stDownloadButton > button[kind="primary"]:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(79, 139, 249, 0.35);
+}
+
+/* Secondary buttons */
+.stButton > button[kind="secondary"] {
+    border-radius: 8px;
+    font-weight: 500;
+    transition: background 0.15s;
+}
+
+/* Success banner */
+[data-testid="stAlert"] div[data-testid="stAlertContentSuccess"] {
+    border-radius: 10px;
+}
+
+/* Spinner / status text */
+[data-testid="stSpinner"] {
+    font-size: 1rem;
+    color: #4F8BF9;
+}
+
+/* Download button full width on results page */
+.download-section .stDownloadButton > button {
+    width: 100%;
+}
+
+/* Warning expanders */
+[data-testid="stExpander"] {
+    border-radius: 10px;
+    border: 1px solid #fbbf24;
+    background: #fffbeb;
+}
+
+/* Divider styling */
+hr {
+    border: none;
+    border-top: 1px solid #e5e7eb;
+    margin: 1.5rem 0;
+}
+
+/* Card-like container for results */
+.results-card {
+    background: #f0f7ff;
+    border: 1px solid #d0e2ff;
+    border-radius: 12px;
+    padding: 1.5rem;
+    margin: 1rem 0;
+}
+
+/* Exceptions section */
+.exceptions-header {
+    color: #b45309;
+    font-size: 0.95rem;
+    font-weight: 600;
+}

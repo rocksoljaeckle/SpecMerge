@@ -1,0 +1,7 @@
+#directories
+.claude/
+.idea/
+.streamlit/
+__pycache__/
+tests/
+documents/

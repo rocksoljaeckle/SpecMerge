@@ -1,0 +1,7 @@
+edit_prompt_path = 'C:\Users\jaeckle\PycharmProjects\SpecMerge\prompts\edit_prompt.md'
+
+fp14_path = 'C:\Users\jaeckle\PycharmProjects\SpecMerge\documents\fp14.pdf'
+
+model = 'gpt-5.4'
+
+css_path = 'assets/style.css'
