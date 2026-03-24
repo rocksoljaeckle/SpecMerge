@@ -31,14 +31,13 @@ def load_css():
 
 SECTION_NO_REGEX = r'^\d{3}\.\d{2}'
 
-async def get_edited_doc(uploaded_file, status) -> tuple[fitz.Document, list[Exception], list[Exception]]:
+async def get_edited_doc(specs_doc: fitz.Document, srcs_doc: fitz.Document) -> tuple[fitz.Document, list[Exception], list[Exception]]:
     st.write("Parsing documents...")
-    srcs_doc = fitz.open(stream=uploaded_file.read(), filetype="pdf")
+
     srcs_sections_pages = get_srcs_sections_pages(srcs_doc)
     total_srcs_pages = srcs_doc.page_count
     srcs_sections_pages = fill_sections_pages(srcs_sections_pages, total_srcs_pages)
 
-    specs_doc = fitz.open(st.session_state['config']['fp14_path'])
     specs_sections_pages = get_specs_sections_pages(specs_doc)
     total_specs_pages = specs_doc.page_count
     specs_sections_pages = fill_sections_pages(specs_sections_pages, total_specs_pages)
@@ -46,7 +45,7 @@ async def get_edited_doc(uploaded_file, status) -> tuple[fitz.Document, list[Exc
     st.write('Getting edits...')
     with open(st.session_state['config']['edit_prompt_path'], 'r', encoding='utf-8') as f:
         edit_prompt = f.read()
-    openai_client = AsyncOpenAI(api_key=st.session_state['global_config']['openai_api_key'])
+    openai_client = AsyncOpenAI(api_key=st.secrets['openai_api_key'])
     semaphore = asyncio.Semaphore(10)  # limit concurrent requests to avoid rate limits
     edit_tasks = []
     for section_no in srcs_sections_pages.keys():
@@ -93,8 +92,7 @@ async def get_edited_doc(uploaded_file, status) -> tuple[fitz.Document, list[Exc
         except Exception as e:
             print(f'Error processing page {page_no}: {e}')
             insert_exceptions.append(e)
-    status.update(label="Merge complete!", state="complete")
-    time.sleep(1) # ensure status update is seen before rerun
+
     return edited_doc, edits_exceptions, insert_exceptions
 
 def get_specs_sections_pages(specs_doc: fitz.Document):
@@ -174,9 +172,15 @@ if 'edited_doc_bytes' in st.session_state:
                     st.warning(f'{e}')
 
 else:
-    st.markdown(
+    st.html(
         '<p class="app-description">Upload an SRCS (revisions) PDF to merge into the FP-14 specification document.</p>',
-        unsafe_allow_html=True,
+    )
+
+    specs_file_options = [spec_file['name'] for spec_file in st.session_state['config']['specs_files']]
+    selected_specs_file_name = st.pills(
+        label = 'Select a specs file to edit',
+        options = specs_file_options,
+        selection_mode = 'single'
     )
 
     uploaded_file = st.file_uploader(
@@ -186,20 +190,23 @@ else:
         help="Select the SRCS revision document you want to merge into FP-14.",
     )
 
-    st.button(
+    if st.button(
         ":material/play_arrow: Run SpecMerge",
         type="primary",
-        disabled=uploaded_file is None,
+        disabled=(uploaded_file is None) or (selected_specs_file_name is None),
         use_container_width=True,
-        key="run_btn",
-    )
+    ):
 
-    if st.session_state.get("run_btn"):
-        # todo add in selection of specific fp doc
         with st.status("Merging specifications (may take several minutes)...", expanded=True) as status:
-            edited_doc, edits_exceptions, insert_exceptions = asyncio.run(get_edited_doc(uploaded_file, status))
+            specs_file_path = [spec_file['path'] for spec_file in st.session_state['config']['specs_files'] if
+                               spec_file['name'] == selected_specs_file_name][0]
+            specs_doc = fitz.open(specs_file_path)
+            srcs_doc = fitz.open(stream=uploaded_file.read(), filetype="pdf")
+
+            edited_doc, edits_exceptions, insert_exceptions = asyncio.run(get_edited_doc(specs_doc, srcs_doc))
             st.session_state['edited_doc_bytes'] = edited_doc.tobytes()
             st.session_state['edits_exceptions'] = edits_exceptions
             st.session_state['insert_exceptions'] = insert_exceptions
             status.update(label="Merge complete!", state="complete")
+            time.sleep(1)  # ensure status update is seen before rerun
         st.rerun()
