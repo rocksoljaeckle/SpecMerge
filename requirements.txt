@@ -4,3 +4,4 @@ openai
 pydantic
 tomli
 markdown
+fuzzysearch
