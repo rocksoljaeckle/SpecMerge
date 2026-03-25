@@ -11,10 +11,31 @@ import tomli
 from openai import AsyncOpenAI
 import traceback
 from markdown import markdown
+import sys
+import pickle
 
-from pdf_utils import get_page_lines
-from pdf_editing import EditsList, PageEdit, StrikeThroughEdit, get_section_edits
-from pdf_utils import multiple_split_insert
+# #todo remove
+# from pdf_utils import multiple_split_edits, StrikethroughEdit, InsertEdit
+# with open('tests/page_edits_dump.pkl', 'wb') as f:
+#     debug_page_edits = {}
+#     for page, (strikethroughs, inserts) in st.session_state['debug_page_edits'].items():
+#         debug_page_edits[page] = (
+#             [StrikethroughEdit.model_validate(e.model_dump()) for e in strikethroughs],
+#             [InsertEdit.model_validate(e.model_dump()) for e in inserts]
+#         )
+#     pickle.dump(debug_page_edits, f)
+# #end rm
+
+DEV_MODE = True# todo set false/rm
+if DEV_MODE:
+    for mod_name in ['pdf_utils', 'llm_pdf_editing']:
+        if mod_name in sys.modules.keys():
+            del sys.modules[mod_name]
+
+from pdf_utils import multiple_split_edits, StrikethroughEdit, InsertEdit
+from llm_pdf_editing import get_section_edits
+
+
 
 if 'config' not in st.session_state:
     with open('config.toml', 'rb') as f:
@@ -23,73 +44,84 @@ if 'config' not in st.session_state:
 def load_css():
     css_path = st.session_state['config'].get('css_path', 'assets/style.css')
     with open(css_path, 'r') as f:
-        st.markdown(f'<style>{f.read()}</style>', unsafe_allow_html=True)
+        st.html(f'<style>{f.read()}</style>')
 
 SECTION_NO_REGEX = r'^\d{3}\.\d{2}'
 
 async def get_edited_doc(specs_doc: fitz.Document, srcs_doc: fitz.Document) -> tuple[fitz.Document, list[Exception], list[Exception]]:
-    st.write("Parsing documents...")
+    parsing_start = time.time()
+    with st.spinner("Parsing documents...", show_time=True):
+        srcs_sections_pages = get_srcs_sections_pages(srcs_doc)
+        total_srcs_pages = srcs_doc.page_count
+        srcs_sections_pages = fill_sections_pages(srcs_sections_pages, total_srcs_pages)
 
-    srcs_sections_pages = get_srcs_sections_pages(srcs_doc)
-    total_srcs_pages = srcs_doc.page_count
-    srcs_sections_pages = fill_sections_pages(srcs_sections_pages, total_srcs_pages)
+        specs_sections_pages = get_specs_sections_pages(specs_doc)
+        total_specs_pages = specs_doc.page_count
+        specs_sections_pages = fill_sections_pages(specs_sections_pages, total_specs_pages)
+    parsing_seconds = time.time() - parsing_start
+    st.write(f'✅ Documents parsed in {parsing_seconds//60} minutes {parsing_seconds%60:.1f} seconds')
 
-    specs_sections_pages = get_specs_sections_pages(specs_doc)
-    total_specs_pages = specs_doc.page_count
-    specs_sections_pages = fill_sections_pages(specs_sections_pages, total_specs_pages)
 
-    st.write('Getting edits...')
-    with open(st.session_state['config']['edit_prompt_path'], 'r', encoding='utf-8') as f:
-        edit_prompt = f.read()
-    openai_client = AsyncOpenAI(api_key=st.secrets['openai_api_key'])
-    semaphore = asyncio.Semaphore(10)  # limit concurrent requests to avoid rate limits
-    edit_tasks = []
-    for section_no in srcs_sections_pages.keys():
-        edit_tasks.append(
-            get_section_edits(
-                section_no=section_no,
-                specs_sections_pages=specs_sections_pages,
-                srcs_sections_pages=srcs_sections_pages,
-                specs_doc=specs_doc,
-                srcs_doc=srcs_doc,
-                edit_prompt=edit_prompt,
-                openai_client=openai_client,
-                sem=semaphore,
-                model=st.session_state['config']['model']
+    editing_start = time.time()
+    with st.spinner('Getting edits...', show_time = True):
+        with open(st.session_state['config']['edit_prompt_path'], 'r', encoding='utf-8') as f:
+            edit_prompt = f.read()
+        openai_client = AsyncOpenAI(api_key=st.secrets['openai_api_key'])
+        semaphore = asyncio.Semaphore(10)  # limit concurrent requests to avoid rate limits
+        edit_tasks = []
+        for section_no in srcs_sections_pages.keys():
+            edit_tasks.append(
+                get_section_edits(
+                    section_no=section_no,
+                    specs_sections_pages=specs_sections_pages,
+                    srcs_sections_pages=srcs_sections_pages,
+                    specs_doc=specs_doc,
+                    srcs_doc=srcs_doc,
+                    edit_prompt=edit_prompt,
+                    openai_client=openai_client,
+                    sem=semaphore,
+                    model=st.session_state['config']['model']
+                )
             )
-        )
-    all_edits = await asyncio.gather(*edit_tasks, return_exceptions=True)
+        all_edits = await asyncio.gather(*edit_tasks, return_exceptions=True)
+    editing_seconds = time.time() - editing_start
+    st.write(f'✅ Edits retrived in {editing_seconds//60} minutes {editing_seconds%60:.1f} seconds')
 
-    st.write('Applying edits to document...')
-    #collate edits by page
-    page_edits = dict()
-    edits_exceptions = []
-    for section_no, edits in zip(specs_sections_pages.keys(), all_edits):
-        if isinstance(edits, Exception):
-            print(f'Error processing section {section_no}: {edits}')
-            edits_exceptions.append(edits)
-        else:
-            for page, (insert_edits, strikethrough_edits) in edits.items():
-                if page not in page_edits:
-                    page_edits[page] = ([],
-                                        [])  # list of (insert_edits, strikethrough_edits) for each section on this page
-                page_edits[page][0].extend(insert_edits)
-                page_edits[page][1].extend(strikethrough_edits)
 
-    edited_doc = fitz.open()
-    edited_doc.insert_pdf(specs_doc)  # start with original document, then apply edits
-    insert_exceptions = []
-    for page_no, (inserts, strikethroughs) in sorted(list(page_edits.items()), key=lambda x: x[0]):
-        page = specs_doc.load_page(page_no)
-        try:
-            edited = multiple_split_insert(page, inserts, strikethroughs)
-            edited_doc.delete_page(page_no)
-            edited_doc.insert_pdf(edited, from_page=0, to_page=0, start_at=page_no)
-        except Exception as e:
-            print(f'Error processing page {page_no}: {e}')
-            insert_exceptions.append(e)
+    edit_apply_start = time.time()
+    with st.spinner('Applying edits to document...', show_time = True):
+        #collate edits by page
+        page_edits = dict()
+        edits_exceptions = []
+        for section_no, edits in zip(srcs_sections_pages.keys(), all_edits):
+            if isinstance(edits, Exception):
+                print(f'Error processing section {section_no}: {edits}')
+                edits_exceptions.append(edits)
+            else:
+                for page, (strikethrough_edits, insert_edits) in edits.items():
+                    if page not in page_edits:
+                        page_edits[page] = ([], [])
+                    page_edits[page][0].extend(strikethrough_edits)
+                    page_edits[page][1].extend(insert_edits)
 
-    return edited_doc, edits_exceptions, insert_exceptions
+        # #todo remove
+        # st.session_state['debug_page_edits'] = page_edits
+
+        edited_doc = fitz.open()
+        edited_doc.insert_pdf(specs_doc)  # start with original document, then apply edits
+        edit_exceptions = []
+        for page_no, (strikethroughs, inserts) in sorted(list(page_edits.items()), key=lambda x: x[0]):
+            page = specs_doc.load_page(page_no)
+            try:
+                edited = multiple_split_edits(page, strikethroughs, inserts)
+                edited_doc.delete_page(page_no)
+                edited_doc.insert_pdf(edited, from_page=0, to_page=0, start_at=page_no)
+            except Exception as e:
+                print(f'Error processing page {page_no}: {e}')
+                edit_exceptions.append(e)
+    edit_apply_seconds = time.time() - edit_apply_start
+    st.write(f'✅ Edits applied in {edit_apply_seconds//60} minutes {edit_apply_seconds%60:.1f} seconds')
+    return edited_doc, edits_exceptions, edit_exceptions
 
 def get_specs_sections_pages(specs_doc: fitz.Document):
     specs_sections_pages = dict()
@@ -133,6 +165,8 @@ st.title("SpecMerge")
 
 if 'edited_doc_bytes' in st.session_state:
     st.success("Merge complete — your edited specification is ready.")
+    st.write(f'Finished in {st.session_state["merge_time"]//60} minutes {st.session_state["merge_time"]%60:.1f} seconds')
+    st.write('It is recommended to review the edited specification to ensure all changes were applied as expected.')
 
     st.divider()
 
@@ -162,10 +196,14 @@ if 'edited_doc_bytes' in st.session_state:
                 st.markdown("**AI Edit Errors**")
                 for e in edit_errs:
                     st.warning(f'{e}')
+                    traceback.print_exception(e)
             if insert_errs:
                 st.markdown("**PDF Insert Errors**")
                 for e in insert_errs:
                     st.warning(f'{e}')
+                    traceback.print_exception(e)
+    else:
+        st.info("0 errors encountered during the merge process.")
 
 else:
     st.html(
@@ -195,6 +233,7 @@ else:
     ):
 
         with st.status("Merging specifications (may take several minutes)...", expanded=True) as status:
+            merge_start = time.time()
             specs_file_path = [spec_file['path'] for spec_file in st.session_state['config']['specs_files'] if
                                spec_file['name'] == selected_specs_file_name][0]
             specs_doc = fitz.open(specs_file_path)
@@ -204,6 +243,7 @@ else:
             st.session_state['edited_doc_bytes'] = edited_doc.tobytes()
             st.session_state['edits_exceptions'] = edits_exceptions
             st.session_state['insert_exceptions'] = insert_exceptions
+            st.session_state['merge_time'] = time.time() - merge_start
             status.update(label="Merge complete!", state="complete")
             time.sleep(1)  # ensure status update is seen before rerun
         st.rerun()
