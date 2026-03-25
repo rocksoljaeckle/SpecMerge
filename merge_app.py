@@ -85,7 +85,7 @@ async def get_edited_doc(specs_doc: fitz.Document, srcs_doc: fitz.Document) -> t
             )
         all_edits = await asyncio.gather(*edit_tasks, return_exceptions=True)
     editing_seconds = time.time() - editing_start
-    st.write(f'✅ Edits retrived in {editing_seconds//60} minutes {editing_seconds%60:.1f} seconds')
+    st.write(f'✅ Edits retrived in {int(editing_seconds//60)} minutes {editing_seconds%60:.1f} seconds')
 
 
     edit_apply_start = time.time()
@@ -96,7 +96,7 @@ async def get_edited_doc(specs_doc: fitz.Document, srcs_doc: fitz.Document) -> t
         for section_no, edits in zip(srcs_sections_pages.keys(), all_edits):
             if isinstance(edits, Exception):
                 print(f'Error processing section {section_no}: {edits}')
-                edits_exceptions.append(edits)
+                edits_exceptions.append((section_no, edits))
             else:
                 for page, (strikethrough_edits, insert_edits) in edits.items():
                     if page not in page_edits:
@@ -118,7 +118,7 @@ async def get_edited_doc(specs_doc: fitz.Document, srcs_doc: fitz.Document) -> t
                 edited_doc.insert_pdf(edited, from_page=0, to_page=0, start_at=page_no)
             except Exception as e:
                 print(f'Error processing page {page_no}: {e}')
-                edit_exceptions.append(e)
+                edit_exceptions.append((page_no, e))
     edit_apply_seconds = time.time() - edit_apply_start
     st.write(f'✅ Edits applied in {edit_apply_seconds//60} minutes {edit_apply_seconds%60:.1f} seconds')
     return edited_doc, edits_exceptions, edit_exceptions
@@ -194,12 +194,14 @@ if 'edited_doc_bytes' in st.session_state:
         with st.expander(f":material/warning: {len(edit_errs) + len(insert_errs)} issue(s) encountered during merge", expanded=False):
             if edit_errs:
                 st.markdown("**AI Edit Errors**")
-                for e in edit_errs:
+                for section_no, e in edit_errs:
+                    st.markdown(f'Error in section {section_no}:')
                     st.warning(f'{e}')
                     traceback.print_exception(e)
             if insert_errs:
                 st.markdown("**PDF Insert Errors**")
-                for e in insert_errs:
+                for page_no, e in insert_errs:
+                    st.markdown(f'Error on page {page_no}:')
                     st.warning(f'{e}')
                     traceback.print_exception(e)
     else:
